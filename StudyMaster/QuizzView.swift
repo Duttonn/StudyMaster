@@ -7,7 +7,6 @@ public class Quizz: NSManagedObject {
     @NSManaged public var correctAnswer: String
     @NSManaged public var options: [String]?
 }
-
 struct QuizView: View {
     @Environment(\.managedObjectContext) private var viewContext
     @FetchRequest(entity: Quizz.entity(), sortDescriptors: [])
@@ -27,25 +26,20 @@ struct QuizView: View {
     @State private var quizCompleted: Bool = false // Track if all quizzes are completed
 
     init() {
-        // Check if the France capital quiz exists, and add it if it doesn't
-        let request = NSFetchRequest<Quizz>(entityName: "Quizz")
-        request.predicate = NSPredicate(format: "questionText == %@", "What is the capital of France?")
-        
         let viewContext = PersistenceController.shared.container.viewContext
 
+        // Check if any quizzes exist; if not, initialize both the basic and random quizzes
+        let request = NSFetchRequest<Quizz>(entityName: "Quizz")
+        
         do {
             let existingQuizzes = try viewContext.fetch(request)
             if existingQuizzes.isEmpty {
-                let newQuestion = Quizz(context: viewContext)
-                newQuestion.questionText = "What is the capital of France?"
-                newQuestion.correctAnswer = "Paris"
-                newQuestion.options = ["Berlin", "Madrid", "Paris", "Rome"]
-                
-                try viewContext.save()
-                print("Basic quiz added to Core Data.")
+                // Only initialize quizzes if no quizzes are found
+//                initializeBasicQuiz(context: viewContext)
+                initializeRandomQuizzes(context: viewContext)
             }
         } catch {
-            print("Failed to check or save the basic quiz: \(error.localizedDescription)")
+            print("Failed to check or save quizzes: \(error.localizedDescription)")
         }
     }
 
@@ -107,6 +101,7 @@ struct QuizView: View {
             }
         }
         .onAppear {
+            initializeRandomQuizzes(context: viewContext)
             startNewQuestion()
         }
         .onDisappear {
@@ -115,7 +110,7 @@ struct QuizView: View {
     }
     
     // MARK: - Methods
-    
+
     func handleAnswerSelection(_ selectedOption: String, correctAnswer: String?) {
         selectedAnswer = selectedOption
         
@@ -219,7 +214,7 @@ struct QuizView: View {
             replayedQuiz.options = quiz.options
         }
         
-        completedQuizzes.removeAll() // Clear the completed quizzes list
+        completedQuizzes.removeAll()
         currentQuizIndex = 0
         quizCompleted = false // Reset quizCompleted to allow replay
         startNewQuestion()
@@ -230,5 +225,51 @@ struct QuizView: View {
         } catch {
             print("Failed to save replayed quizzes: \(error.localizedDescription)")
         }
+    }
+}
+
+// Helper functions
+//func initializeBasicQuiz(context: NSManagedObjectContext) {
+//    let newQuestion = Quizz(context: context)
+//    newQuestion.questionText = "What is the capital of France?"
+//    newQuestion.correctAnswer = "Paris"
+//    newQuestion.options = ["Berlin", "Madrid", "Paris", "Rome"]
+//    
+//    do {
+//        try context.save()
+//        print("Basic quiz added to Core Data.")
+//    } catch {
+//        print("Failed to save the basic quiz: \(error.localizedDescription)")
+//    }
+//}
+
+func initializeRandomQuizzes(context: NSManagedObjectContext) {
+    let sampleQuizzes = [
+        ("What is the capital of Germany?", "Berlin", ["Berlin", "Munich", "Frankfurt", "Hamburg"]),
+        ("What is 2 + 2?", "4", ["3", "4", "5", "6"]),
+        ("Which planet is known as the Red Planet?", "Mars", ["Earth", "Mars", "Jupiter", "Saturn"]),
+        ("What is the boiling point of water?", "100°C", ["90°C", "100°C", "110°C", "120°C"]),
+        ("Who wrote 'To be, or not to be'?", "William Shakespeare", ["J.K. Rowling", "Ernest Hemingway", "William Shakespeare", "Charles Dickens"]),
+        ("What is the square root of 16?", "4", ["2", "3", "4", "5"]),
+        ("What is the chemical symbol for water?", "H2O", ["H2O", "CO2", "O2", "NaCl"]),
+        ("What color do you get when you mix red and blue?", "Purple", ["Green", "Yellow", "Purple", "Orange"]),
+        ("Which animal is known as the king of the jungle?", "Lion", ["Elephant", "Tiger", "Lion", "Giraffe"]),
+        ("What is the largest planet in our solar system?", "Jupiter", ["Earth", "Mars", "Jupiter", "Saturn"])
+    ]
+    
+    let randomQuizzes = sampleQuizzes.shuffled().prefix(5)
+    
+    for (questionText, correctAnswer, options) in randomQuizzes {
+        let newQuiz = Quizz(context: context)
+        newQuiz.questionText = questionText
+        newQuiz.correctAnswer = correctAnswer
+        newQuiz.options = options
+    }
+    
+    do {
+        try context.save()
+        print("Random quizzes initialized and saved to Core Data.")
+    } catch {
+        print("Failed to save quizzes: \(error.localizedDescription)")
     }
 }
