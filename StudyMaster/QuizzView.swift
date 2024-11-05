@@ -11,20 +11,30 @@ public class Quizz: NSManagedObject {
 struct QuizView: View {
     @Environment(\.managedObjectContext) private var viewContext
     @FetchRequest(entity: Quizz.entity(), sortDescriptors: [])
-    var questions: FetchedResults<Quizz>
+    var questions: FetchedResults<Quizz> // Use FetchedResults to load from Core Data
     
+    @State private var currentQuizIndex: Int = 0
     @State private var selectedAnswer: String? = nil
-    @State private var correctAnswer: String? = nil
-    @State private var wrongAttempts: Int = 0
+    @State private var wrongAttempts: Set<String> = [] // Track unique wrong answers
     @State private var score: Double = 0.0
     @State private var startTime: Date?
     @State private var scoreStartTime: Date?
     @State private var hasAnsweredCorrectly: Bool = false
-    @State private var wrongAnswers: Set<String> = [] // Track wrong answers
+    @State private var wrongAnswers: Set<String> = [] // Track wrong answers for UI
+    @State private var timeRemaining: Int = 15 // Timer in seconds
+    @State private var timer: Timer? = nil // Reference to the timer
+    @State private var completedQuizzes: [Quizz] = [] // Track completed quizzes for replay
 
     var body: some View {
         VStack {
-            if let question = questions.first {
+            if !questions.isEmpty, questions.indices.contains(currentQuizIndex) {
+                let question = questions[currentQuizIndex]
+                
+                Text("Temps restant: \(timeRemaining) sec")
+                    .font(.headline)
+                    .foregroundColor(timeRemaining > 0 ? .primary : .red)
+                    .padding()
+                
                 Text(question.questionText ?? "No question available")
                     .font(.title)
                     .padding()
@@ -42,7 +52,7 @@ struct QuizView: View {
                                 .cornerRadius(8)
                                 .padding(.horizontal)
                         }
-                        .disabled(hasAnsweredCorrectly) // Disable further selections after correct answer
+                        .disabled(hasAnsweredCorrectly || timeRemaining <= 0) // Disable if answered or time is up
                     }
                 } else {
                     Text("No options available")
@@ -50,8 +60,7 @@ struct QuizView: View {
                         .padding()
                 }
                 
-                // Display score after answering correctly
-                if hasAnsweredCorrectly {
+                if hasAnsweredCorrectly || timeRemaining <= 0 {
                     Text("Score: \(Int(score))")
                         .font(.headline)
                         .padding()
@@ -61,12 +70,24 @@ struct QuizView: View {
                     loadNextQuestion()
                 }
                 .padding()
-                .disabled(!hasAnsweredCorrectly) // Enable only after correct answer is selected
+                .disabled(!hasAnsweredCorrectly && timeRemaining > 0)
+            } else {
+                Text("No more quizzes available.")
+                    .font(.title)
+                    .padding()
+                
+                Button("Replay Quizzes") {
+                    replayQuizzes()
+                }
+                .padding()
             }
         }
         .onAppear {
             loadQuizDataIfNeeded()
             startNewQuestion()
+        }
+        .onDisappear {
+            timer?.invalidate() // Stop the timer when view disappears
         }
     }
     
@@ -76,38 +97,40 @@ struct QuizView: View {
         selectedAnswer = selectedOption
         
         if selectedOption == correctAnswer {
-            // Correct answer selected
             hasAnsweredCorrectly = true
             calculateScore()
+            stopTimer()
         } else {
-            // Wrong answer selected
-            wrongAttempts += 1
-            wrongAnswers.insert(selectedOption) // Track this as a wrong answer
+            if !wrongAttempts.contains(selectedOption) {
+                wrongAttempts.insert(selectedOption)
+                wrongAnswers.insert(selectedOption)
+            }
         }
     }
     
     func calculateScore() {
-        // If the user answers within the first 5 seconds (scoreStartTime is nil), give full score of 100
-        if scoreStartTime == nil {
-            score = 100 / Double(wrongAttempts + 1) // Adjust based on wrong attempts
+        if timeRemaining <= 0 {
+            score = 0
             return
         }
         
-        // Calculate time taken after the 5-second delay
+        if scoreStartTime == nil {
+            score = 100 / Double(wrongAttempts.count + 1)
+            return
+        }
+        
         let timeTaken = Date().timeIntervalSince(scoreStartTime!)
-        let baseScore = max(100 - timeTaken * 10, 10) // Base score decreases over time, minimum score of 10
+        let baseScore = max(100 - timeTaken * 10, 10)
         
-        // Adjust score based on wrong attempts
-        score = baseScore / Double(wrongAttempts + 1)
+        score = baseScore / Double(wrongAttempts.count + 1)
         
-        // Round up to 100 if score is above 90 and no wrong attempts
-        if score > 90 && wrongAttempts == 0 {
+        if score > 90 && wrongAttempts.isEmpty {
             score = 100
         }
     }
     
     func backgroundColor(for option: String, correctAnswer: String?) -> Color {
-        if option == correctAnswer && hasAnsweredCorrectly {
+        if option == correctAnswer && (hasAnsweredCorrectly || timeRemaining <= 0) {
             return Color.green
         } else if wrongAnswers.contains(option) {
             return Color.red
@@ -117,19 +140,17 @@ struct QuizView: View {
     }
     
     func startNewQuestion() {
-        // Reset variables for a new question
         selectedAnswer = nil
-        correctAnswer = nil
-        wrongAttempts = 0
+        wrongAttempts = []
+        wrongAnswers = []
         score = 0.0
         hasAnsweredCorrectly = false
-        wrongAnswers.removeAll() // Clear tracked wrong answers
-        startTime = Date() // Track the initial time
-        scoreStartTime = nil // Reset score start time to nil
-
-        // Delay the scoring start time by 5 seconds
+        startTime = Date()
+        scoreStartTime = nil
+        timeRemaining = 15 // Reset timer for each question
+        startTimer()
+        
         DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
-            // Only set scoreStartTime if the user hasn't already answered correctly
             if !hasAnsweredCorrectly {
                 scoreStartTime = Date()
             }
@@ -137,39 +158,75 @@ struct QuizView: View {
     }
     
     func loadNextQuestion() {
+        if !questions.isEmpty, questions.indices.contains(currentQuizIndex) {
+            completedQuizzes.append(questions[currentQuizIndex]) // Track completed quiz
+            currentQuizIndex += 1
+        }
+        
+        if currentQuizIndex >= questions.count {
+            currentQuizIndex = 0
+        }
+        
         startNewQuestion()
-        // Logic for loading the next question could be added here
     }
     
-    func loadQuizDataIfNeeded() {
-        if questions.isEmpty {
-            let newQuestion = Quizz(context: viewContext)
-            newQuestion.questionText = "What is the capital of France?"
-            newQuestion.correctAnswer = "Paris"
-            newQuestion.options = ["Berlin", "Madrid", "Paris", "Rome"]
-            
-            do {
-                try viewContext.save()
-            } catch {
-                print("Failed to save data: \(error.localizedDescription)")
+    func startTimer() {
+        timer?.invalidate() // Stop any existing timer
+        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
+            if timeRemaining > 0 {
+                timeRemaining -= 1
+            } else {
+                stopTimer()
+                score = 0 // Set score to 0 if time is up
+                hasAnsweredCorrectly = true // Mark question as answered
             }
         }
     }
-}
-
-
-func createNewQuizz(questionText: String, correctAnswer: String, options: [String], context: NSManagedObjectContext) {
-    let newQuiz = Quizz(context: context)
-    newQuiz.questionText = questionText
-    newQuiz.correctAnswer = correctAnswer
-    newQuiz.options = options
     
-    do {
-        try context.save()
-        print("New quiz created successfully.")
-    } catch {
-        print("Failed to save new quiz: \(error.localizedDescription)")
+    func stopTimer() {
+        timer?.invalidate()
+        timer = nil
+    }
+    
+    func loadQuizDataIfNeeded() {
+        // Create a fetch request specifically for Quizz entities
+        let request = NSFetchRequest<Quizz>(entityName: "Quizz")
+        request.predicate = NSPredicate(format: "questionText == %@", "What is the capital of France?")
+        
+        do {
+            let existingQuizzes = try viewContext.fetch(request)
+            if existingQuizzes.isEmpty {
+                // If the quiz does not exist, add it
+                let newQuestion = Quizz(context: viewContext)
+                newQuestion.questionText = "What is the capital of France?"
+                newQuestion.correctAnswer = "Paris"
+                newQuestion.options = ["Berlin", "Madrid", "Paris", "Rome"]
+                
+                try viewContext.save()
+                print("Basic quiz added to Core Data.")
+            }
+        } catch {
+            print("Failed to check or save the basic quiz: \(error.localizedDescription)")
+        }
+    }
+
+    func replayQuizzes() {
+        completedQuizzes.forEach { quiz in
+            let replayedQuiz = Quizz(context: viewContext)
+            replayedQuiz.questionText = quiz.questionText
+            replayedQuiz.correctAnswer = quiz.correctAnswer
+            replayedQuiz.options = quiz.options
+        }
+        
+        completedQuizzes.removeAll() // Clear the completed quizzes list
+        currentQuizIndex = 0 // Reset to the beginning
+        startNewQuestion()
+        
+        do {
+            try viewContext.save()
+            print("All quizzes have been replayed.")
+        } catch {
+            print("Failed to save replayed quizzes: \(error.localizedDescription)")
+        }
     }
 }
-
-
