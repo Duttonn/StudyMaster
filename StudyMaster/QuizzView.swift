@@ -11,7 +11,7 @@ public class Quizz: NSManagedObject {
 struct QuizView: View {
     @Environment(\.managedObjectContext) private var viewContext
     @FetchRequest(entity: Quizz.entity(), sortDescriptors: [])
-    var questions: FetchedResults<Quizz> // Use FetchedResults to load from Core Data
+    var questions: FetchedResults<Quizz>
     
     @State private var currentQuizIndex: Int = 0
     @State private var selectedAnswer: String? = nil
@@ -20,14 +20,38 @@ struct QuizView: View {
     @State private var startTime: Date?
     @State private var scoreStartTime: Date?
     @State private var hasAnsweredCorrectly: Bool = false
-    @State private var wrongAnswers: Set<String> = [] // Track wrong answers for UI
+    @State private var wrongAnswers: Set<String> = []
     @State private var timeRemaining: Int = 15 // Timer in seconds
-    @State private var timer: Timer? = nil // Reference to the timer
+    @State private var timer: Timer? = nil
     @State private var completedQuizzes: [Quizz] = [] // Track completed quizzes for replay
+    @State private var quizCompleted: Bool = false // Track if all quizzes are completed
+
+    init() {
+        // Check if the France capital quiz exists, and add it if it doesn't
+        let request = NSFetchRequest<Quizz>(entityName: "Quizz")
+        request.predicate = NSPredicate(format: "questionText == %@", "What is the capital of France?")
+        
+        let viewContext = PersistenceController.shared.container.viewContext
+
+        do {
+            let existingQuizzes = try viewContext.fetch(request)
+            if existingQuizzes.isEmpty {
+                let newQuestion = Quizz(context: viewContext)
+                newQuestion.questionText = "What is the capital of France?"
+                newQuestion.correctAnswer = "Paris"
+                newQuestion.options = ["Berlin", "Madrid", "Paris", "Rome"]
+                
+                try viewContext.save()
+                print("Basic quiz added to Core Data.")
+            }
+        } catch {
+            print("Failed to check or save the basic quiz: \(error.localizedDescription)")
+        }
+    }
 
     var body: some View {
         VStack {
-            if !questions.isEmpty, questions.indices.contains(currentQuizIndex) {
+            if !quizCompleted, !questions.isEmpty, questions.indices.contains(currentQuizIndex) {
                 let question = questions[currentQuizIndex]
                 
                 Text("Temps restant: \(timeRemaining) sec")
@@ -52,7 +76,7 @@ struct QuizView: View {
                                 .cornerRadius(8)
                                 .padding(.horizontal)
                         }
-                        .disabled(hasAnsweredCorrectly || timeRemaining <= 0) // Disable if answered or time is up
+                        .disabled(hasAnsweredCorrectly || timeRemaining <= 0)
                     }
                 } else {
                     Text("No options available")
@@ -71,7 +95,7 @@ struct QuizView: View {
                 }
                 .padding()
                 .disabled(!hasAnsweredCorrectly && timeRemaining > 0)
-            } else {
+            } else if quizCompleted {
                 Text("No more quizzes available.")
                     .font(.title)
                     .padding()
@@ -83,11 +107,10 @@ struct QuizView: View {
             }
         }
         .onAppear {
-            loadQuizDataIfNeeded()
             startNewQuestion()
         }
         .onDisappear {
-            timer?.invalidate() // Stop the timer when view disappears
+            timer?.invalidate()
         }
     }
     
@@ -147,7 +170,7 @@ struct QuizView: View {
         hasAnsweredCorrectly = false
         startTime = Date()
         scoreStartTime = nil
-        timeRemaining = 15 // Reset timer for each question
+        timeRemaining = 15
         startTimer()
         
         DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
@@ -158,27 +181,27 @@ struct QuizView: View {
     }
     
     func loadNextQuestion() {
-        if !questions.isEmpty, questions.indices.contains(currentQuizIndex) {
-            completedQuizzes.append(questions[currentQuizIndex]) // Track completed quiz
+        if questions.indices.contains(currentQuizIndex) {
+            completedQuizzes.append(questions[currentQuizIndex])
             currentQuizIndex += 1
         }
         
         if currentQuizIndex >= questions.count {
-            currentQuizIndex = 0
+            quizCompleted = true // Set quizCompleted to true when all quizzes are done
+        } else {
+            startNewQuestion()
         }
-        
-        startNewQuestion()
     }
     
     func startTimer() {
-        timer?.invalidate() // Stop any existing timer
+        timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
             if timeRemaining > 0 {
                 timeRemaining -= 1
             } else {
                 stopTimer()
-                score = 0 // Set score to 0 if time is up
-                hasAnsweredCorrectly = true // Mark question as answered
+                score = 0
+                hasAnsweredCorrectly = true
             }
         }
     }
@@ -188,28 +211,6 @@ struct QuizView: View {
         timer = nil
     }
     
-    func loadQuizDataIfNeeded() {
-        // Create a fetch request specifically for Quizz entities
-        let request = NSFetchRequest<Quizz>(entityName: "Quizz")
-        request.predicate = NSPredicate(format: "questionText == %@", "What is the capital of France?")
-        
-        do {
-            let existingQuizzes = try viewContext.fetch(request)
-            if existingQuizzes.isEmpty {
-                // If the quiz does not exist, add it
-                let newQuestion = Quizz(context: viewContext)
-                newQuestion.questionText = "What is the capital of France?"
-                newQuestion.correctAnswer = "Paris"
-                newQuestion.options = ["Berlin", "Madrid", "Paris", "Rome"]
-                
-                try viewContext.save()
-                print("Basic quiz added to Core Data.")
-            }
-        } catch {
-            print("Failed to check or save the basic quiz: \(error.localizedDescription)")
-        }
-    }
-
     func replayQuizzes() {
         completedQuizzes.forEach { quiz in
             let replayedQuiz = Quizz(context: viewContext)
@@ -219,7 +220,8 @@ struct QuizView: View {
         }
         
         completedQuizzes.removeAll() // Clear the completed quizzes list
-        currentQuizIndex = 0 // Reset to the beginning
+        currentQuizIndex = 0
+        quizCompleted = false // Reset quizCompleted to allow replay
         startNewQuestion()
         
         do {
