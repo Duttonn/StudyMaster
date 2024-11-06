@@ -7,6 +7,7 @@ public class Quizz: NSManagedObject {
     @NSManaged public var correctAnswer: String
     @NSManaged public var options: [String]?
 }
+
 struct QuizView: View {
     @Environment(\.managedObjectContext) private var viewContext
     @FetchRequest(entity: Quizz.entity(), sortDescriptors: [])
@@ -14,29 +15,28 @@ struct QuizView: View {
     
     @State private var currentQuizIndex: Int = 0
     @State private var selectedAnswer: String? = nil
-    @State private var wrongAttempts: Set<String> = [] // Track unique wrong answers
+    @State private var wrongAttempts: Set<String> = []
     @State private var score: Double = 0.0
+    @State private var scores: [Double] = [] // Array to store individual quiz scores
     @State private var startTime: Date?
     @State private var scoreStartTime: Date?
     @State private var hasAnsweredCorrectly: Bool = false
     @State private var wrongAnswers: Set<String> = []
-    @State private var timeRemaining: Int = 15 // Timer in seconds
+    @State private var timeRemaining: Int = 15
     @State private var timer: Timer? = nil
-    @State private var completedQuizzes: [Quizz] = [] // Track completed quizzes for replay
-    @State private var quizCompleted: Bool = false // Track if all quizzes are completed
+    @State private var completedQuizzes: [Quizz] = []
+    @State private var quizCompleted: Bool = false
 
     init() {
         let viewContext = PersistenceController.shared.container.viewContext
 
-        // Check if any quizzes exist; if not, initialize both the basic and random quizzes
+        // Initialize quizzes if none exist
         let request = NSFetchRequest<Quizz>(entityName: "Quizz")
         
         do {
             let existingQuizzes = try viewContext.fetch(request)
             if existingQuizzes.isEmpty {
-                // Only initialize quizzes if no quizzes are found
-//                initializeBasicQuiz(context: viewContext)
-                initializeRandomQuizzes(context: viewContext)
+//                initializeRandomQuizzes(context: viewContext)
             }
         } catch {
             print("Failed to check or save quizzes: \(error.localizedDescription)")
@@ -90,8 +90,14 @@ struct QuizView: View {
                 .padding()
                 .disabled(!hasAnsweredCorrectly && timeRemaining > 0)
             } else if quizCompleted {
+                let meanScore = scores.isEmpty ? 0 : scores.reduce(0, +) / Double(scores.count)
+                
                 Text("No more quizzes available.")
                     .font(.title)
+                    .padding()
+                
+                Text("Mean Score: \(Int(meanScore))")
+                    .font(.headline)
                     .padding()
                 
                 Button("Replay Quizzes") {
@@ -168,7 +174,7 @@ struct QuizView: View {
         timeRemaining = 15
         startTimer()
         
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
             if !hasAnsweredCorrectly {
                 scoreStartTime = Date()
             }
@@ -178,6 +184,7 @@ struct QuizView: View {
     func loadNextQuestion() {
         if questions.indices.contains(currentQuizIndex) {
             completedQuizzes.append(questions[currentQuizIndex])
+            scores.append(score) // Save score after each quiz
             currentQuizIndex += 1
         }
         
@@ -215,8 +222,9 @@ struct QuizView: View {
         }
         
         completedQuizzes.removeAll()
+        scores.removeAll() // Reset scores for replay
         currentQuizIndex = 0
-        quizCompleted = false // Reset quizCompleted to allow replay
+        quizCompleted = false
         startNewQuestion()
         
         do {
@@ -227,21 +235,6 @@ struct QuizView: View {
         }
     }
 }
-
-// Helper functions
-//func initializeBasicQuiz(context: NSManagedObjectContext) {
-//    let newQuestion = Quizz(context: context)
-//    newQuestion.questionText = "What is the capital of France?"
-//    newQuestion.correctAnswer = "Paris"
-//    newQuestion.options = ["Berlin", "Madrid", "Paris", "Rome"]
-//    
-//    do {
-//        try context.save()
-//        print("Basic quiz added to Core Data.")
-//    } catch {
-//        print("Failed to save the basic quiz: \(error.localizedDescription)")
-//    }
-//}
 
 func initializeRandomQuizzes(context: NSManagedObjectContext) {
     let sampleQuizzes = [
@@ -257,7 +250,8 @@ func initializeRandomQuizzes(context: NSManagedObjectContext) {
         ("What is the largest planet in our solar system?", "Jupiter", ["Earth", "Mars", "Jupiter", "Saturn"])
     ]
     
-    let randomQuizzes = sampleQuizzes.shuffled().prefix(5)
+    let randomQuizzes = sampleQuizzes.shuffled()
+//    let randomQuizzes = sampleQuizzes.shuffled().prefix(5)
     
     for (questionText, correctAnswer, options) in randomQuizzes {
         let newQuiz = Quizz(context: context)
