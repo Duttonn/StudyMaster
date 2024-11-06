@@ -17,7 +17,7 @@ struct QuizView: View {
     @State private var selectedAnswer: String? = nil
     @State private var wrongAttempts: Set<String> = []
     @State private var score: Double = 0.0
-    @State private var scores: [Double] = [] // Array to store individual quiz scores
+    @State private var scores: [Double] = []
     @State private var startTime: Date?
     @State private var scoreStartTime: Date?
     @State private var hasAnsweredCorrectly: Bool = false
@@ -26,17 +26,15 @@ struct QuizView: View {
     @State private var timer: Timer? = nil
     @State private var completedQuizzes: [Quizz] = []
     @State private var quizCompleted: Bool = false
+    @State private var progress: CGFloat = 1.0
 
     init() {
         let viewContext = PersistenceController.shared.container.viewContext
-
-        // Initialize quizzes if none exist
         let request = NSFetchRequest<Quizz>(entityName: "Quizz")
         
         do {
             let existingQuizzes = try viewContext.fetch(request)
             if existingQuizzes.isEmpty {
-//                initializeRandomQuizzes(context: viewContext)
             }
         } catch {
             print("Failed to check or save quizzes: \(error.localizedDescription)")
@@ -44,68 +42,93 @@ struct QuizView: View {
     }
 
     var body: some View {
-        VStack {
-            if !quizCompleted, !questions.isEmpty, questions.indices.contains(currentQuizIndex) {
-                let question = questions[currentQuizIndex]
-                
-                Text("Temps restant: \(timeRemaining) sec")
-                    .font(.headline)
-                    .foregroundColor(timeRemaining > 0 ? .primary : .red)
-                    .padding()
-                
-                Text(question.questionText ?? "No question available")
-                    .font(.title)
-                    .padding()
-                
-                if let options = question.options {
-                    ForEach(options, id: \.self) { option in
-                        Button(action: {
-                            handleAnswerSelection(option, correctAnswer: question.correctAnswer)
-                        }) {
-                            Text(option)
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(backgroundColor(for: option, correctAnswer: question.correctAnswer))
-                                .foregroundColor(.white)
-                                .cornerRadius(8)
-                                .padding(.horizontal)
+        GeometryReader { geometry in
+            VStack(spacing: 20) {
+                if !quizCompleted, !questions.isEmpty, questions.indices.contains(currentQuizIndex) {
+                    let question = questions[currentQuizIndex]
+                    
+                    CircularProgressBar(progress: $progress)
+                        .frame(width: 60, height: 60)
+                        .padding(.top)
+                    
+                    Text(question.questionText ?? "No question available")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                        .foregroundColor(.primary)
+                        .multilineTextAlignment(.center)
+                        .padding()
+                        .frame(width: geometry.size.width * 0.9)
+                    
+                    if let options = question.options {
+                        VStack(spacing: 10) {
+                            ForEach(options, id: \.self) { option in
+                                Button(action: {
+                                    handleAnswerSelection(option, correctAnswer: question.correctAnswer)
+                                }) {
+                                    Text(option)
+                                        .frame(maxWidth: .infinity)
+                                        .padding()
+                                        .background(backgroundColor(for: option, correctAnswer: question.correctAnswer))
+                                        .foregroundColor(.white)
+                                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                                        .shadow(radius: selectedAnswer == option ? 3 : 0)
+                                }
+                                .disabled(hasAnsweredCorrectly || timeRemaining <= 0)
+                            }
                         }
-                        .disabled(hasAnsweredCorrectly || timeRemaining <= 0)
+                        .padding(.horizontal)
+                    } else {
+                        Text("No options available")
+                            .foregroundColor(.gray)
+                            .padding()
                     }
-                } else {
-                    Text("No options available")
-                        .foregroundColor(.gray)
+                    
+                    if hasAnsweredCorrectly || timeRemaining <= 0 {
+                        Text("Score: \(Int(score))")
+                            .font(.headline)
+                            .foregroundColor(.blue)
+                            .padding()
+                    }
+                    
+                    Button(action: loadNextQuestion) {
+                        Text("Next Question")
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(hasAnsweredCorrectly || timeRemaining <= 0 ? Color.blue : Color.gray)
+                            .foregroundColor(.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .padding(.horizontal)
+                    }
+                    .disabled(!hasAnsweredCorrectly && timeRemaining > 0)
+                } else if quizCompleted {
+                    let meanScore = scores.isEmpty ? 0 : scores.reduce(0, +) / Double(scores.count)
+                    
+                    Text("All quizzes completed!")
+                        .font(.title)
+                        .fontWeight(.semibold)
                         .padding()
-                }
-                
-                if hasAnsweredCorrectly || timeRemaining <= 0 {
-                    Text("Score: \(Int(score))")
-                        .font(.headline)
+                    
+                    Text("Mean Score: \(Int(meanScore))")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                        .foregroundColor(.blue)
                         .padding()
+                    
+                    Button(action: replayQuizzes) {
+                        Text("Replay Quizzes")
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.blue)
+                            .foregroundColor(.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .padding(.horizontal)
+                    }
                 }
-                
-                Button("Next Question") {
-                    loadNextQuestion()
-                }
-                .padding()
-                .disabled(!hasAnsweredCorrectly && timeRemaining > 0)
-            } else if quizCompleted {
-                let meanScore = scores.isEmpty ? 0 : scores.reduce(0, +) / Double(scores.count)
-                
-                Text("No more quizzes available.")
-                    .font(.title)
-                    .padding()
-                
-                Text("Mean Score: \(Int(meanScore))")
-                    .font(.headline)
-                    .padding()
-                
-                Button("Replay Quizzes") {
-                    replayQuizzes()
-                }
-                .padding()
             }
+            .frame(width: geometry.size.width)
         }
+        .padding()
+        .background(Color(UIColor.systemBackground))
         .onAppear {
             initializeRandomQuizzes(context: viewContext)
             startNewQuestion()
@@ -159,7 +182,7 @@ struct QuizView: View {
         } else if wrongAnswers.contains(option) {
             return Color.red
         } else {
-            return Color.gray
+            return Color.gray.opacity(0.3)
         }
     }
     
@@ -172,6 +195,7 @@ struct QuizView: View {
         startTime = Date()
         scoreStartTime = nil
         timeRemaining = 15
+        progress = 1.0
         startTimer()
         
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
@@ -184,12 +208,12 @@ struct QuizView: View {
     func loadNextQuestion() {
         if questions.indices.contains(currentQuizIndex) {
             completedQuizzes.append(questions[currentQuizIndex])
-            scores.append(score) // Save score after each quiz
+            scores.append(score)
             currentQuizIndex += 1
         }
         
         if currentQuizIndex >= questions.count {
-            quizCompleted = true // Set quizCompleted to true when all quizzes are done
+            quizCompleted = true
         } else {
             startNewQuestion()
         }
@@ -200,6 +224,7 @@ struct QuizView: View {
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
             if timeRemaining > 0 {
                 timeRemaining -= 1
+                progress = CGFloat(timeRemaining) / 15.0
             } else {
                 stopTimer()
                 score = 0
@@ -222,7 +247,7 @@ struct QuizView: View {
         }
         
         completedQuizzes.removeAll()
-        scores.removeAll() // Reset scores for replay
+        scores.removeAll()
         currentQuizIndex = 0
         quizCompleted = false
         startNewQuestion()
@@ -235,6 +260,29 @@ struct QuizView: View {
         }
     }
 }
+
+//struct CircularProgressBar: View {
+//    @Binding var progress: CGFloat
+//    
+//    var body: some View {
+//        ZStack {
+//            Circle()
+//                .stroke(lineWidth: 10.0)
+//                .opacity(0.3)
+//                .foregroundColor(.blue)
+//            
+//            Circle()
+//                .trim(from: 0.0, to: progress)
+//                .stroke(style: StrokeStyle(lineWidth: 10.0, lineCap: .round, lineJoin: .round))
+//                .foregroundColor(.blue)
+//                .rotationEffect(Angle(degrees: 270.0))
+//            
+//            Text("\(Int(progress * 15))")
+//                .font(.headline)
+//                .bold()
+//        }
+//    }
+//}
 
 func initializeRandomQuizzes(context: NSManagedObjectContext) {
     let sampleQuizzes = [
@@ -251,7 +299,6 @@ func initializeRandomQuizzes(context: NSManagedObjectContext) {
     ]
     
     let randomQuizzes = sampleQuizzes.shuffled()
-//    let randomQuizzes = sampleQuizzes.shuffled().prefix(5)
     
     for (questionText, correctAnswer, options) in randomQuizzes {
         let newQuiz = Quizz(context: context)
