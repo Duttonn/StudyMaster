@@ -10,7 +10,7 @@ import CoreData
 @main
 struct StudyMasterApp: App {
     let persistenceController = PersistenceController.shared
-    
+    let APIKey = "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"
     init() {
         clearAllQuizzes(context: persistenceController.container.viewContext)
     }
