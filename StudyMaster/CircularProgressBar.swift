@@ -24,7 +24,7 @@ struct CircularProgressBar: View {
                 .rotationEffect(Angle(degrees: 270.0))
                 .animation(.easeInOut(duration: 1.5), value: progress) // Smooth animation
 
-            Text("\(Int(progress * 15))")
+            Text("\(Int(progress * 60))")
                 .font(.headline)
                 .bold()
         }
