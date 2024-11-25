@@ -23,72 +23,80 @@ struct QuizzView: View {
     @State private var hasAnsweredCorrectly: Bool = false
     @State private var timer: Timer? = nil
 
+    var meanScore: Double {
+        scores.isEmpty ? 0.0 : scores.reduce(0.0, +) / Double(scores.count)
+    }
+
     var score: Double {
         max(40, 40 + progress * 60) // Convert progress to score (40 to 100)
     }
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            VStack(spacing: 0) {
-                if let question = questions[safe: currentQuizIndex] {
-                    // Header with Timer and Question
-                    headerView(question: question)
+            if quizCompleted {
+                ReplayView(meanScore: meanScore, replayAction: replayQuizzes)
+            } else {
+                VStack(spacing: 0) {
+                    if let question = questions[safe: currentQuizIndex] {
+                        // Header with Timer and Question
+                        headerView(question: question)
 
-                    Spacer()
-                    
-                    // Answer Options
-                    VStack(spacing: 10) {
-                        if let options = question.options {
-                            ForEach(options, id: \.self) { option in
-                                Button(action: {
-                                    handleAnswerSelection(option, correctAnswer: question.correctAnswer)
-                                }) {
-                                    LaTeX(option)
-                                        .padding()
-                                        .frame(maxWidth: .infinity)
-                                        .background(backgroundColor(for: option, correctAnswer: question.correctAnswer))
-                                        .foregroundColor(.white)
-                                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                                        .shadow(radius: 1)
+                        Spacer()
+                        
+                        // Answer Options
+                        VStack(spacing: 10) {
+                            if let options = question.options {
+                                ForEach(options, id: \.self) { option in
+                                    Button(action: {
+                                        handleAnswerSelection(option, correctAnswer: question.correctAnswer)
+                                    }) {
+                                        LaTeX(option)
+                                            .padding()
+                                            .frame(maxWidth: .infinity)
+                                            .background(backgroundColor(for: option, correctAnswer: question.correctAnswer))
+                                            .foregroundColor(.white)
+                                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                                            .shadow(radius: 1)
+                                    }
+                                    .disabled(hasAnsweredCorrectly || progress <= 0)
                                 }
-                                .disabled(hasAnsweredCorrectly || progress <= 0)
                             }
                         }
+                        .padding(.horizontal)
+                        .frame(maxWidth: .infinity, alignment: .center)
                     }
-                    .padding(.horizontal)
-                    .frame(maxWidth: .infinity, alignment: .center)
+                    
+                    Spacer()
                 }
                 
-                Spacer()
-            }
-            
-            // Fixed Buttons at the Bottom
-            if !quizCompleted {
-                HStack(spacing: 10) {
-                    // Forfeit Button
-                    Button(action: forfeit) {
-                        Text("Forfeit")
-                            .padding()
-                            .frame(maxWidth: .infinity)
-                            .background(Color.red)
-                            .foregroundColor(.white)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                // Fixed Buttons at the Bottom
+                if !quizCompleted {
+                    HStack(spacing: 10) {
+                        // Forfeit Button
+                        Button(action: forfeit) {
+                            Text("Forfeit")
+                                .padding()
+                                .frame(maxWidth: .infinity)
+                                .background(Color.red)
+                                .foregroundColor(.white)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                        }
+                        .padding(.horizontal)
+                        
+                        // Next Question Button
+                        Button(action: loadNextQuestion) {
+                            Text("Next Question")
+                                .padding()
+                                .frame(maxWidth: .infinity)
+                                .background(hasAnsweredCorrectly || progress <= 0 ? Color.blue : Color.gray)
+                                .foregroundColor(.white)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                .padding(.horizontal)
+                        }
+                        .disabled(!hasAnsweredCorrectly && progress > 0)
                     }
-                    .padding(.horizontal)
-                    
-                    // Next Question Button
-                    Button(action: loadNextQuestion) {
-                        Text("Next Question")
-                            .padding()
-                            .frame(maxWidth: .infinity)
-                            .background(hasAnsweredCorrectly || progress <= 0 ? Color.blue : Color.gray)
-                            .foregroundColor(.white)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                            .padding(.horizontal)
-                    }
-                    .disabled(!hasAnsweredCorrectly && progress > 0)
+                    .padding(.bottom, 20)
                 }
-                .padding(.bottom, 20)
             }
         }
         .background(Color(UIColor.systemBackground))
@@ -123,7 +131,7 @@ struct QuizzView: View {
                 .padding(.horizontal)
                 .frame(maxWidth: .infinity) // Ensure the background takes full width
                 .clipShape(RoundedRectangle(cornerRadius: 12))
-                .padding( 10)
+                .padding(10)
         }
         .padding(.top, 10)
         .padding(.horizontal)
@@ -206,6 +214,7 @@ struct QuizzView: View {
     }
 }
 
+
 extension Collection {
     subscript(safe index: Index) -> Element? {
         return indices.contains(index) ? self[index] : nil
@@ -214,6 +223,20 @@ extension Collection {
 
 
 func initializeRandomQuizzes(context: NSManagedObjectContext) {
+    // Fetch existing quizzes
+    let fetchRequest = NSFetchRequest<Quizz>(entityName: "Quizz")
+        do {
+            let existingQuizzes = try context.fetch(fetchRequest)
+            if !existingQuizzes.isEmpty {
+                print("Quizzes already exist in Core Data.")
+                return // Exit if quizzes already exist
+            }
+        } catch {
+            print("Failed to fetch quizzes: \(error.localizedDescription)")
+            return
+        }
+
+    
     let sampleQuizzes = [
         ("Quelle est la transformée de Laplace de la réponse impulsionnelle d'un système sans conditions initiales ?",
          "$H(p) = \\frac{S(p)}{E(p)}$",
@@ -264,7 +287,7 @@ func initializeRandomQuizzes(context: NSManagedObjectContext) {
              "Tous ses zéros doivent être réels"
          ]),
         ("Dans une boucle ouverte, comment est calculée la fonction de transfert ?",
-         "$H(p) = G(p) \\cdot H(p)$",
+         "$T(p) = G(p) \\cdot H(p)$",
          [
              "$T(p) = G(p) \\cdot H(p)$",
              "$T(p) = G(p) + H(p)$",
@@ -295,25 +318,16 @@ func initializeRandomQuizzes(context: NSManagedObjectContext) {
              "La fréquence à la phase",
              "La réponse impulsionnelle au temps"
          ])
-    ]
-.shuffled() // Shuffle the questions here
+    ].shuffled() // Shuffle the questions here
     
     for (questionText, correctAnswer, options) in sampleQuizzes {
-            var randomizedOptions = options // Start with the original options
-            let correctAnswerIndex = Int.random(in: 0..<randomizedOptions.count) // Randomly pick a position for the correct answer
-            
-            // Remove the correct answer if it's already in the options
-            randomizedOptions.removeAll { $0 == correctAnswer }
-            
-            // Insert the correct answer at the random index
-            randomizedOptions.insert(correctAnswer, at: correctAnswerIndex)
-            
-            let newQuiz = Quizz(context: context)
-            newQuiz.questionText = questionText
-            newQuiz.correctAnswer = correctAnswer
-            newQuiz.options = randomizedOptions
-        }
-
+        let randomizedOptions = options.shuffled() // Shuffle the options
+        let newQuiz = Quizz(context: context)
+        newQuiz.questionText = questionText
+        newQuiz.correctAnswer = correctAnswer
+        newQuiz.options = randomizedOptions
+    }
+    
     do {
         try context.save()
         print("Random quizzes initialized and saved to Core Data.")
@@ -321,3 +335,4 @@ func initializeRandomQuizzes(context: NSManagedObjectContext) {
         print("Failed to save quizzes: \(error.localizedDescription)")
     }
 }
+

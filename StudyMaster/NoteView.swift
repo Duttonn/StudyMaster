@@ -3,98 +3,67 @@ import CoreData
 
 struct NoteView: View {
     @Environment(\.managedObjectContext) private var viewContext
-    
+
     @FetchRequest(
         sortDescriptors: [NSSortDescriptor(keyPath: \NoteEntity.timestamp, ascending: true)],
         animation: .default)
     private var items: FetchedResults<NoteEntity>
-    
-    // State variables for the item creation alert
-    @State private var presentAlert = false
-    @State private var itemName: String = ""
-    @State private var itemContent: String = ""
-    
+
+    @State private var selectedNote: NoteEntity? = nil // Track selected note for navigation
+
     var body: some View {
-        NavigationView {
-            VStack {
-                List {
-                    // Filter items that have a valid name
-                    ForEach(items.filter { !($0.name?.isEmpty ?? true) }) { item in
-                        NavigationLink {
-                            VStack(alignment: .leading) {
-                                Text("Name: \(item.name ?? "Unnamed")")
-                                    .font(.headline)
-                                Text("Content: \(item.content ?? "No content")")
-                                    .font(.subheadline)
-//                                Text("Created at \(item.timestamp!, formatter: itemFormatter)")
-//                                    .font(.footnote)
-                            }
-                        } label: {
-                            Text(item.name ?? "Unnamed Item")
+        VStack {
+            List {
+                ForEach(items.filter { !($0.name?.isEmpty ?? true) }) { item in
+                    NavigationLink(destination: ItemDetailView(item: item), tag: item, selection: $selectedNote) {
+                        VStack(alignment: .leading) {
+                            Text(item.name ?? "Unnamed")
+                                .font(.headline)
+                            Text(item.content ?? "No content")
+                                .font(.subheadline)
+                                .foregroundColor(.gray)
+                            Text("Last modified: \(formattedDate(item.timestamp))")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
                         }
-                    }
-                    .onDelete(perform: deleteItems)
-                }
-                .toolbar {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        EditButton()
-                    }
-                    ToolbarItem {
-                        Button(action: {
-                            presentAlert = true
-                        }) {
-                            Label("Add Item", systemImage: "plus")
-                        }
+                        .padding(.vertical, 4)
                     }
                 }
-                .alert("Create New Item", isPresented: $presentAlert, actions: {
-                    TextField("Item Name", text: $itemName)
-                    TextField("Item Content", text: $itemContent)
-                    
-                    Button("Save", action: saveItem)
-                    Button("Cancel", role: .cancel, action: clearFields)
-                }, message: {
-                    Text("Enter a name and content for the new item.")
-                })
+                .onDelete(perform: deleteItems)
             }
-            Text("Select an item")
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    EditButton()
+                }
+                ToolbarItem {
+                    Button(action: createAndSelectNote) {
+                        Label("Add Item", systemImage: "plus")
+                    }
+                }
+            }
         }
+        .navigationTitle("Notes")
     }
 
-    // Function to save the new item to Core Data
-    private func saveItem() {
-        guard !itemName.isEmpty else {
-            print("Item name cannot be empty!")
-            return
-        }
-        
+    // MARK: - Methods
+
+    private func createAndSelectNote() {
         withAnimation {
-            let newItem = NoteEntity(context: viewContext)
-            newItem.name = itemName
-            newItem.content = itemContent
-            newItem.timestamp = Date()
+            let newNote = NoteEntity(context: viewContext)
+            newNote.name = "New Note"
+            newNote.content = ""
+            newNote.timestamp = Date()
 
             do {
                 try viewContext.save()
-                print("Item saved successfully! Name: \(newItem.name ?? "No Name"), Content: \(newItem.content ?? "No Content")")
-                clearFields()
+                selectedNote = newNote // Automatically select the newly created note
             } catch {
-                // Log the error details for debugging
                 let nsError = error as NSError
-                print("Error saving item: \(nsError), UserInfo: \(nsError.userInfo)")
+                print("Error creating new note: \(nsError), \(nsError.userInfo)")
             }
         }
     }
 
-
-
-    // Function to clear the input fields
-    private func clearFields() {
-        itemName = ""
-        itemContent = ""
-    }
-
-    // Function to delete items
     private func deleteItems(offsets: IndexSet) {
         withAnimation {
             offsets.map { items[$0] }.forEach(viewContext.delete)
@@ -103,19 +72,16 @@ struct NoteView: View {
                 try viewContext.save()
             } catch {
                 let nsError = error as NSError
-                fatalError("Unresolved error \(nsError), \(nsError.userInfo)")
+                print("Error deleting item: \(nsError), \(nsError.userInfo)")
             }
         }
     }
-}
 
-private let itemFormatter: DateFormatter = {
-    let formatter = DateFormatter()
-    formatter.dateStyle = .short
-    formatter.timeStyle = .medium
-    return formatter
-}()
-
-#Preview {
-    NoteView().environment(\.managedObjectContext, PersistenceController.preview.container.viewContext)
+    private func formattedDate(_ date: Date?) -> String {
+        guard let date = date else { return "Unknown" }
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
+    }
 }

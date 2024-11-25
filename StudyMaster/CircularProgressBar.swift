@@ -9,7 +9,7 @@ import SwiftUI
 
 struct CircularProgressBar: View {
     @Binding var progress: CGFloat
-    var duration : TimeInterval = 0.6
+    var duration : TimeInterval = 1.5
 
     var body: some View {
         ZStack {
