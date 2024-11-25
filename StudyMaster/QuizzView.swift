@@ -8,7 +8,8 @@ public class Quizz: NSManagedObject {
     @NSManaged public var correctAnswer: String
     @NSManaged public var options: [String]?
 }
-struct QuizView: View {
+
+struct QuizzView: View {
     @Environment(\.managedObjectContext) private var viewContext
     @FetchRequest(entity: Quizz.entity(), sortDescriptors: [])
     var questions: FetchedResults<Quizz>
@@ -23,79 +24,42 @@ struct QuizView: View {
     @State private var timer: Timer? = nil
 
     var score: Double {
-        // Convert progress (0.0 to 1.0) to score (40 to 100)
-        max(40, 40 + progress * 60)
+        max(40, 40 + progress * 60) // Convert progress to score (40 to 100)
     }
 
     var body: some View {
         ZStack(alignment: .bottom) {
             VStack(spacing: 0) {
-                // Timer and Score Header
-                headerView()
-                
-                // Main Content
-                if !quizCompleted {
-                    if let question = questions[safe: currentQuizIndex] {
-                        VStack(spacing: 10) {
-                            // Title and Answers
-                            VStack(spacing: 10) {
-                                // Title
-                                ScrollView {
-                                    LaTeX(question.questionText)
-                                        .font(.title2)
-                                        .fontWeight(.bold)
-                                        .multilineTextAlignment(.center)
-                                        .padding(.horizontal)
-                                }
-                                .frame(height: 120) // Allocate space for the title
+                if let question = questions[safe: currentQuizIndex] {
+                    // Header with Timer and Question
+                    headerView(question: question)
 
-                                // Answer Options
-                                VStack(spacing: 5) {
-                                    if let options = question.options {
-                                        ForEach(options, id: \.self) { option in
-                                            Button(action: {
-                                                handleAnswerSelection(option, correctAnswer: question.correctAnswer)
-                                            }) {
-                                                LaTeX(option)
-                                                    .padding()
-                                                    .frame(maxWidth: .infinity)
-                                                    .background(backgroundColor(for: option, correctAnswer: question.correctAnswer))
-                                                    .foregroundColor(.white)
-                                                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                                                    .shadow(radius: 1)
-                                            }
-                                            .disabled(hasAnsweredCorrectly || progress <= 0)
-                                        }
-                                    }
+                    Spacer()
+                    
+                    // Answer Options
+                    VStack(spacing: 10) {
+                        if let options = question.options {
+                            ForEach(options, id: \.self) { option in
+                                Button(action: {
+                                    handleAnswerSelection(option, correctAnswer: question.correctAnswer)
+                                }) {
+                                    LaTeX(option)
+                                        .padding()
+                                        .frame(maxWidth: .infinity)
+                                        .background(backgroundColor(for: option, correctAnswer: question.correctAnswer))
+                                        .foregroundColor(.white)
+                                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                                        .shadow(radius: 1)
                                 }
-                                .padding(.horizontal)
+                                .disabled(hasAnsweredCorrectly || progress <= 0)
                             }
-                            .frame(maxHeight: .infinity) // Distribute space evenly
-                            .padding(.top, 10)
-                        }
-                        .padding(.horizontal)
-                    }
-                } else {
-                    VStack {
-                        Text("Quiz Completed!")
-                            .font(.title)
-                            .fontWeight(.bold)
-                            .padding()
-                        let meanScore = scores.isEmpty ? 0 : scores.reduce(0, +) / Double(scores.count)
-                        Text("Mean Score: \(Int(meanScore))")
-                            .font(.headline)
-                            .foregroundColor(.blue)
-                            .padding()
-                        Button(action: replayQuizzes) {
-                            Text("Replay Quiz")
-                                .padding()
-                                .frame(maxWidth: .infinity)
-                                .background(Color.blue)
-                                .foregroundColor(.white)
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
                         }
                     }
+                    .padding(.horizontal)
+                    .frame(maxWidth: .infinity, alignment: .center)
                 }
+                
+                Spacer()
             }
             
             // Fixed Buttons at the Bottom
@@ -124,7 +88,7 @@ struct QuizView: View {
                     }
                     .disabled(!hasAnsweredCorrectly && progress > 0)
                 }
-                .padding(.bottom, 20) // Add padding for safe area
+                .padding(.bottom, 20)
             }
         }
         .background(Color(UIColor.systemBackground))
@@ -136,27 +100,38 @@ struct QuizView: View {
             timer?.invalidate()
         }
     }
-
-    // Single Header View with Timer and Score
-    private func headerView() -> some View {
-        HStack {
-            Spacer()
-            VStack {
-                // Timer Circle
-                CircularProgressBar(progress: $progress)
-                    .frame(width: 50, height: 50)
-                Text("Score: \(Int(score))")
-                    .font(.headline)
-                    .foregroundColor(.blue)
+    
+    private func headerView(question: FetchedResults<Quizz>.Element) -> some View {
+        VStack(spacing: 10) {
+            HStack {
+                Spacer()
+                VStack {
+                    CircularProgressBar(progress: $progress)
+                        .frame(width: 50, height: 50)
+                    Text("Score: \(Int(score))")
+                        .font(.headline)
+                        .foregroundColor(.blue)
+                }
+                Spacer()
             }
+            
+            // Question Text
+            LaTeX(question.questionText)
+                .font(.title2)
+                .fontWeight(.bold)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
+                .frame(maxWidth: .infinity) // Ensure the background takes full width
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .padding( 10)
         }
-        .padding()
+        .padding(.top, 10)
+        .padding(.horizontal)
         .background(Color(UIColor.secondarySystemBackground))
-        .zIndex(1) // Ensure it stays fixed
     }
     
     // MARK: - Methods
-    
+
     func handleAnswerSelection(_ selectedOption: String, correctAnswer: String?) {
         selectedAnswer = selectedOption
         if selectedOption == correctAnswer {
@@ -169,11 +144,11 @@ struct QuizView: View {
             }
         }
     }
-    
+
     func forfeit() {
         progress = 0 // Set progress to 0 immediately
     }
-    
+
     func loadNextQuestion() {
         if questions.indices.contains(currentQuizIndex) {
             scores.append(score)
@@ -187,7 +162,7 @@ struct QuizView: View {
             startNewQuestion()
         }
     }
-    
+
     func startNewQuestion() {
         selectedAnswer = nil
         wrongAttempts = []
@@ -195,7 +170,7 @@ struct QuizView: View {
         progress = 1.0 // Reset progress to full (60 seconds)
         startTimer()
     }
-    
+
     func startTimer() {
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
@@ -207,19 +182,19 @@ struct QuizView: View {
             }
         }
     }
-    
+
     func stopTimer() {
         timer?.invalidate()
         timer = nil
     }
-    
+
     func replayQuizzes() {
         scores.removeAll()
         currentQuizIndex = 0
         quizCompleted = false
         startNewQuestion()
     }
-    
+
     func backgroundColor(for option: String, correctAnswer: String?) -> Color {
         if option == correctAnswer && (hasAnsweredCorrectly) {
             return Color.green
@@ -236,19 +211,6 @@ extension Collection {
         return indices.contains(index) ? self[index] : nil
     }
 }
-
-
-
-//
-//func backgroundColor(for option: String, correctAnswer: String?) -> Color {
-//    if option == correctAnswer && (hasAnsweredCorrectly) {
-//        return Color.green
-//    } else if wrongAttempts.contains(option) {
-//        return Color.red
-//    } else {
-//        return Color.gray.opacity(0.3)
-//    }
-//}
 
 
 func initializeRandomQuizzes(context: NSManagedObjectContext) {
@@ -304,10 +266,10 @@ func initializeRandomQuizzes(context: NSManagedObjectContext) {
         ("Dans une boucle ouverte, comment est calculée la fonction de transfert ?",
          "$H(p) = G(p) \\cdot H(p)$",
          [
-             "$H(p) = G(p) \\cdot H(p)$",
-             "$H(p) = G(p) + H(p)$",
-             "$H(p) = G(p) / H(p)$",
-             "$H(p) = G(p) - H(p)$"
+             "$T(p) = G(p) \\cdot H(p)$",
+             "$T(p) = G(p) + H(p)$",
+             "$T(p) = G(p) / H(p)$",
+             "$T(p) = G(p) - H(p)$"
          ]),
         ("Quelle est l'expression mathématique pour une fonction de transfert en boucle fermée ?",
          "$H(p) = \\frac{G(p)}{1 + G(p)H(p)}$",

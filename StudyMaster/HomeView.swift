@@ -13,7 +13,7 @@ struct HomeView: View {
                     .padding(.top, 60)
 
                 // Button for QuizView
-                NavigationLink(destination: QuizView().environment(\.managedObjectContext, viewContext)) {
+                NavigationLink(destination: QuizzView().environment(\.managedObjectContext, viewContext)) {
                     HStack {
                         Image(systemName: "questionmark.circle.fill")
                             .font(.title2)
