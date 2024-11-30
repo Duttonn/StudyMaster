@@ -18,7 +18,7 @@ struct ReplayView: View {
                 .fontWeight(.bold)
                 .padding()
 
-            Text("Mean Score: \(Int(meanScore))")
+            Text("Average Score: \(Int(meanScore))")
                 .font(.title2)
                 .foregroundColor(.gray)
                 .padding(.bottom)

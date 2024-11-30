@@ -2,12 +2,7 @@ import SwiftUI
 import CoreData
 import LaTeXSwiftUI
 
-@objc(Quizz)
-public class Quizz: NSManagedObject {
-    @NSManaged public var questionText: String
-    @NSManaged public var correctAnswer: String
-    @NSManaged public var options: [String]?
-}
+
 
 struct QuizzView: View {
     @Environment(\.managedObjectContext) private var viewContext
@@ -22,13 +17,29 @@ struct QuizzView: View {
     @State private var quizCompleted: Bool = false
     @State private var hasAnsweredCorrectly: Bool = false
     @State private var timer: Timer? = nil
+    
+    
+    var subject: Subject
+
+        init(subject: Subject) {
+            self.subject = subject
+            _questions = FetchRequest(
+                entity: Quizz.entity(),
+                sortDescriptors: [],
+                predicate: NSPredicate(format: "subject == %@", subject)
+            )
+        }
 
     var meanScore: Double {
         scores.isEmpty ? 0.0 : scores.reduce(0.0, +) / Double(scores.count)
     }
 
     var score: Double {
-        max(40, 40 + progress * 60) // Convert progress to score (40 to 100)
+        // Grading system: base score (40) + remaining time weighted for speed and penalties
+        let baseScore = 40.0
+        let timeBonus = progress * 60.0 // Remaining seconds as score
+        let wrongPenalty = Double(wrongAttempts.count) * 5.0 // -5 points per incorrect attempt
+        return max(baseScore, baseScore + timeBonus - wrongPenalty)
     }
 
     var body: some View {
@@ -44,26 +55,31 @@ struct QuizzView: View {
                         Spacer()
                         
                         // Answer Options
-                        VStack(spacing: 10) {
-                            if let options = question.options {
-                                ForEach(options, id: \.self) { option in
-                                    Button(action: {
-                                        handleAnswerSelection(option, correctAnswer: question.correctAnswer)
-                                    }) {
-                                        LaTeX(option)
-                                            .padding()
-                                            .frame(maxWidth: .infinity)
-                                            .background(backgroundColor(for: option, correctAnswer: question.correctAnswer))
-                                            .foregroundColor(.white)
-                                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                                            .shadow(radius: 1)
+                        VStack {
+                            Spacer() // Pushes the content to the bottom
+                            
+                            VStack(spacing: 10) {
+                                if let options = question.options {
+                                    ForEach(options, id: \.self) { option in
+                                        Button(action: {
+                                            handleAnswerSelection(option, correctAnswer: question.correctAnswer)
+                                        }) {
+                                            LaTeX(option)
+                                                .padding()
+                                                .frame(maxWidth: .infinity)
+                                                .background(backgroundColor(for: option, correctAnswer: question.correctAnswer))
+                                                .foregroundColor(.white)
+                                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                                .shadow(radius: 1)
+                                        }
+                                        .disabled(hasAnsweredCorrectly || progress <= 0)
                                     }
-                                    .disabled(hasAnsweredCorrectly || progress <= 0)
                                 }
                             }
+                            .padding(.horizontal)
+                            .padding(.bottom, 100) // Ensures spacing above bottom buttons
+                            .frame(maxWidth: .infinity, alignment: .center)
                         }
-                        .padding(.horizontal)
-                        .frame(maxWidth: .infinity, alignment: .center)
                     }
                     
                     Spacer()
@@ -148,7 +164,7 @@ struct QuizzView: View {
         } else {
             if !wrongAttempts.contains(selectedOption) {
                 wrongAttempts.insert(selectedOption)
-                progress = max(0, progress - (10.0 / 60.0)) // Deduct 10 seconds as a fraction of progress
+                // Removed time deduction for wrong answers
             }
         }
     }
@@ -214,125 +230,8 @@ struct QuizzView: View {
     }
 }
 
-
 extension Collection {
     subscript(safe index: Index) -> Element? {
         return indices.contains(index) ? self[index] : nil
     }
 }
-
-
-func initializeRandomQuizzes(context: NSManagedObjectContext) {
-    // Fetch existing quizzes
-    let fetchRequest = NSFetchRequest<Quizz>(entityName: "Quizz")
-        do {
-            let existingQuizzes = try context.fetch(fetchRequest)
-            if !existingQuizzes.isEmpty {
-                print("Quizzes already exist in Core Data.")
-                return // Exit if quizzes already exist
-            }
-        } catch {
-            print("Failed to fetch quizzes: \(error.localizedDescription)")
-            return
-        }
-
-    
-    let sampleQuizzes = [
-        ("Quelle est la transformée de Laplace de la réponse impulsionnelle d'un système sans conditions initiales ?",
-         "$H(p) = \\frac{S(p)}{E(p)}$",
-         [
-             "$H(p) = \\frac{S(p)}{E(p)}$",
-             "$H(p) = S(p) + E(p)$",
-             "$H(p) = S(p) \\cdot E(p)$",
-             "$H(p) = S(p) - E(p)$"
-         ]),
-        ("Quel est le critère pour qu'un système soit stable selon les pôles ?",
-         "Les pôles doivent avoir une partie réelle négative",
-         [
-             "Les pôles doivent avoir une partie réelle négative",
-             "Les pôles doivent être complexes",
-             "Les pôles doivent être à partie réelle positive",
-             "Les pôles doivent être imaginaires purs"
-         ]),
-        ("Que représente le diagramme de Bode ?",
-         "La réponse fréquentielle d'un système",
-         [
-             "La réponse fréquentielle d'un système",
-             "La stabilité d'un système",
-             "La réponse impulsionnelle d'un système",
-             "La phase et l'amplitude à zéro"
-         ]),
-        ("Dans un système causal, quelle est l'équation caractéristique typique ?",
-         "$a_n \\cdot p^n + a_{n-1} \\cdot p^{n-1} + \\ldots + a_0 = 0$",
-         [
-             "$a_n \\cdot p^n + a_{n-1} \\cdot p^{n-1} + \\ldots + a_0 = 0$",
-             "$p^n + p^{n-1} + \\ldots = 0$",
-             "$a_n + a_{n-1} + \\ldots + a_0 = 0$",
-             "$a_n \\cdot p + a_{n-1} = 0$"
-         ]),
-        ("Que signifie une décroissance exponentielle de la réponse d'un système ?",
-         "Le système est stable",
-         [
-             "Le système est stable",
-             "Le système est instable",
-             "Le système est critique",
-             "Le système oscille"
-         ]),
-        ("Quelle est la condition pour qu'un système ait une phase minimale ?",
-         "Tous ses zéros doivent être à l'intérieur du cercle unité",
-         [
-             "Tous ses zéros doivent être à l'intérieur du cercle unité",
-             "Tous ses pôles doivent être réels",
-             "Tous ses pôles doivent être positifs",
-             "Tous ses zéros doivent être réels"
-         ]),
-        ("Dans une boucle ouverte, comment est calculée la fonction de transfert ?",
-         "$T(p) = G(p) \\cdot H(p)$",
-         [
-             "$T(p) = G(p) \\cdot H(p)$",
-             "$T(p) = G(p) + H(p)$",
-             "$T(p) = G(p) / H(p)$",
-             "$T(p) = G(p) - H(p)$"
-         ]),
-        ("Quelle est l'expression mathématique pour une fonction de transfert en boucle fermée ?",
-         "$H(p) = \\frac{G(p)}{1 + G(p)H(p)}$",
-         [
-             "$H(p) = \\frac{G(p)}{1 + G(p)H(p)}$",
-             "$H(p) = G(p) \\cdot H(p)$",
-             "$H(p) = G(p) - H(p)$",
-             "$H(p) = G(p) + H(p)$"
-         ]),
-        ("Que signifie un pôle avec une partie réelle positive ?",
-         "Le système est instable",
-         [
-             "Le système est instable",
-             "Le système est stable",
-             "Le système est critique",
-             "Le système oscille"
-         ]),
-        ("Dans un système LTI, que relie la fonction de transfert $H(p)$ ?",
-         "La sortie $S(p)$ à l'entrée $E(p)$",
-         [
-             "La sortie $S(p)$ à l'entrée $E(p)$",
-             "La stabilité au gain",
-             "La fréquence à la phase",
-             "La réponse impulsionnelle au temps"
-         ])
-    ].shuffled() // Shuffle the questions here
-    
-    for (questionText, correctAnswer, options) in sampleQuizzes {
-        let randomizedOptions = options.shuffled() // Shuffle the options
-        let newQuiz = Quizz(context: context)
-        newQuiz.questionText = questionText
-        newQuiz.correctAnswer = correctAnswer
-        newQuiz.options = randomizedOptions
-    }
-    
-    do {
-        try context.save()
-        print("Random quizzes initialized and saved to Core Data.")
-    } catch {
-        print("Failed to save quizzes: \(error.localizedDescription)")
-    }
-}
-

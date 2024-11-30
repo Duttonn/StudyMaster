@@ -17,7 +17,7 @@ struct StudyMasterApp: App {
     
     var body: some Scene {
         WindowGroup {
-            HomeView()
+            SubjectsView()
 //            QuizzView()
                 .environment(\.managedObjectContext, persistenceController.container.viewContext)
         }

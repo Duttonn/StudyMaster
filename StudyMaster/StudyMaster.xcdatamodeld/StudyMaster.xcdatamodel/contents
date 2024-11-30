@@ -1,13 +1,20 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="23507" systemVersion="24B83" minimumToolsVersion="Automatic" sourceLanguage="Swift" userDefinedModelVersionIdentifier="">
-    <entity name="NoteEntity" representedClassName="NoteEntity" syncable="YES" codeGenerationType="class">
+<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="23507" systemVersion="24B91" minimumToolsVersion="Automatic" sourceLanguage="Swift" userDefinedModelVersionIdentifier="">
+    <entity name="NoteEntity" representedClassName="NoteEntity" syncable="YES">
         <attribute name="content" optional="YES" attributeType="String"/>
         <attribute name="name" optional="YES" attributeType="String"/>
         <attribute name="timestamp" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <relationship name="subject" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Subject" inverseName="notes" inverseEntity="Subject"/>
     </entity>
     <entity name="Quizz" representedClassName=".Quizz" syncable="YES">
         <attribute name="correctAnswer" optional="YES" attributeType="String"/>
         <attribute name="options" optional="YES" attributeType="Transformable" valueTransformerName="ArrayTransformer"/>
         <attribute name="questionText" optional="YES" attributeType="String"/>
+        <relationship name="subject" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Subject" inverseName="quizzes" inverseEntity="Subject"/>
+    </entity>
+    <entity name="Subject" representedClassName=".Subject" syncable="YES">
+        <attribute name="name" optional="YES" attributeType="String"/>
+        <relationship name="notes" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="NoteEntity" inverseName="subject" inverseEntity="NoteEntity"/>
+        <relationship name="quizzes" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Quizz" inverseName="subject" inverseEntity="Quizz"/>
     </entity>
 </model>

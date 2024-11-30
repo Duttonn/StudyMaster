@@ -1,18 +1,29 @@
 import SwiftUI
 import CoreData
 
+
 struct NoteView: View {
     @Environment(\.managedObjectContext) private var viewContext
+    @FetchRequest var items: FetchedResults<NoteEntity>
 
-    @FetchRequest(
-        sortDescriptors: [NSSortDescriptor(keyPath: \NoteEntity.timestamp, ascending: true)],
-        animation: .default)
-    private var items: FetchedResults<NoteEntity>
+    var subject: Subject // The subject associated with this view
 
     @State private var selectedNote: NoteEntity? = nil // Track selected note for navigation
 
+    // Initialize fetch request with a predicate for the subject
+    init(subject: Subject) {
+        self.subject = subject
+        _items = FetchRequest(
+            entity: NoteEntity.entity(),
+            sortDescriptors: [NSSortDescriptor(keyPath: \NoteEntity.timestamp, ascending: true)],
+            predicate: NSPredicate(format: "subject == %@", subject),
+            animation: .default
+        )
+    }
+
     var body: some View {
         VStack {
+            // List of Notes
             List {
                 ForEach(items.filter { !($0.name?.isEmpty ?? true) }) { item in
                     NavigationLink(destination: ItemDetailView(item: item), tag: item, selection: $selectedNote) {
@@ -37,12 +48,12 @@ struct NoteView: View {
                 }
                 ToolbarItem {
                     Button(action: createAndSelectNote) {
-                        Label("Add Item", systemImage: "plus")
+                        Label("Add Note", systemImage: "plus")
                     }
                 }
             }
         }
-        .navigationTitle("Notes")
+        .navigationTitle("Notes for \(subject.name)")
     }
 
     // MARK: - Methods
@@ -53,6 +64,7 @@ struct NoteView: View {
             newNote.name = "New Note"
             newNote.content = ""
             newNote.timestamp = Date()
+            newNote.subject = subject // Link the note to the current subject
 
             do {
                 try viewContext.save()
