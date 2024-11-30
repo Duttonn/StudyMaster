@@ -9,7 +9,7 @@ import Foundation
 import CoreData
 import SwiftUI
 
-func initializeRandomQuizzes(context: NSManagedObjectContext) {
+func initializeRandomQuizzes(context: NSManagedObjectContext, subject: Subject) {
     // Fetch existing quizzes
     let fetchRequest = NSFetchRequest<Quizz>(entityName: "Quizz")
         do {
@@ -108,13 +108,13 @@ func initializeRandomQuizzes(context: NSManagedObjectContext) {
     ].shuffled() // Shuffle the questions here
     
     for (questionText, correctAnswer, options) in sampleQuizzes {
-        let randomizedOptions = options.shuffled() // Shuffle the options
-        let newQuiz = Quizz(context: context)
-        newQuiz.questionText = questionText
-        newQuiz.correctAnswer = correctAnswer
-        newQuiz.options = randomizedOptions
-    }
-    
+           let randomizedOptions = options.shuffled()
+           let newQuiz = Quizz(context: context)
+           newQuiz.questionText = questionText
+           newQuiz.correctAnswer = correctAnswer
+           newQuiz.options = randomizedOptions
+           newQuiz.subject = subject // Link the quiz to the provided subject
+       }
     do {
         try context.save()
         print("Random quizzes initialized and saved to Core Data.")

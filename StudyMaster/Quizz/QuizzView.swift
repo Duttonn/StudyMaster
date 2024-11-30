@@ -21,14 +21,28 @@ struct QuizzView: View {
     
     var subject: Subject
 
-        init(subject: Subject) {
-            self.subject = subject
-            _questions = FetchRequest(
-                entity: Quizz.entity(),
-                sortDescriptors: [],
-                predicate: NSPredicate(format: "subject == %@", subject)
-            )
+    init(subject: Subject) {
+        self.subject = subject
+        _questions = FetchRequest(
+            entity: Quizz.entity(),
+            sortDescriptors: [],
+            predicate: NSPredicate(format: "subject == %@", subject)
+        )
+        
+        // Check if there are no quizzes for the subject, and initialize them
+        let context = PersistenceController.shared.container.viewContext
+        let fetchRequest: NSFetchRequest<Quizz> = NSFetchRequest(entityName: "Quizz") // Explicitly cast fetch request
+        fetchRequest.predicate = NSPredicate(format: "subject == %@", subject)
+
+        do {
+            let fetchedQuizzes = try context.fetch(fetchRequest)
+            if fetchedQuizzes.isEmpty {
+                initializeRandomQuizzes(context: context, subject: subject)
+            }
+        } catch {
+            print("Failed to fetch quizzes: \(error.localizedDescription)")
         }
+    }
 
     var meanScore: Double {
         scores.isEmpty ? 0.0 : scores.reduce(0.0, +) / Double(scores.count)
@@ -117,7 +131,7 @@ struct QuizzView: View {
         }
         .background(Color(UIColor.systemBackground))
         .onAppear {
-            initializeRandomQuizzes(context: viewContext)
+            initializeRandomQuizzes(context: viewContext, subject: subject)
             startNewQuestion()
         }
         .onDisappear {
